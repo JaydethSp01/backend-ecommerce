@@ -85,7 +85,8 @@ const esquemaCrearPedido = Joi.object({
     .try(
       Joi.string().pattern(/^[0-9a-fA-F]{24}$/), // MongoDB ObjectId
       Joi.string().min(1), // String ID (Firebase UID)
-      Joi.allow(null, undefined) // Permitir null o undefined para invitados
+      Joi.string().allow(null), // Permitir null para invitados
+      Joi.valid(null) // Permitir null explícitamente
     )
     .optional(),
 });
