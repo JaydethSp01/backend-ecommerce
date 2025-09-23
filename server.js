@@ -17,6 +17,7 @@ const wishlistRoutes = require("./routes/wishlistRoutes");
 const notificacionRoutes = require("./routes/notificacionRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const pedidoRoutes = require("./routes/pedidoRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
 
 // Import middleware
 const errorHandler = require("./middleware/errorHandler");
@@ -165,6 +166,7 @@ app.use("/api/wishlists", wishlistRoutes);
 app.use("/api/notificaciones", notificacionRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/pedidos", pedidoRoutes);
+app.use("/api/reviews", reviewRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {
@@ -181,6 +183,7 @@ app.get("/", (req, res) => {
       notificaciones: "/api/notificaciones",
       admin: "/api/admin",
       pedidos: "/api/pedidos",
+      reviews: "/api/reviews",
     },
   });
 });

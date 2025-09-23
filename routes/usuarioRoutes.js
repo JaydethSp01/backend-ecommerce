@@ -9,8 +9,24 @@ const {
 } = require("../middleware/authMiddleware");
 const { validarDatos } = require("../middleware/authMiddleware");
 const Joi = require("joi");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 // Esquemas de validación
+const esquemaLogin = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().required().min(6),
+});
+
+const esquemaRegistro = Joi.object({
+  nombre: Joi.string().required().max(100),
+  email: Joi.string().email().required(),
+  password: Joi.string().required().min(6),
+  telefono: Joi.string().max(20),
+  direccion: Joi.string().max(200),
+  rol: Joi.string().valid("CLIENTE", "ADMIN").default("CLIENTE"),
+});
+
 const esquemaUsuario = Joi.object({
   nombre: Joi.string().required().max(100),
   email: Joi.string().email().required(),
@@ -41,6 +57,118 @@ const esquemaActualizacionUsuario = Joi.object({
   }),
   idioma: Joi.string().valid("es", "en", "fr", "pt"),
 });
+
+// POST /api/usuarios/login - Login de usuario
+router.post("/login", async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    // Buscar usuario por email
+    const usuario = await Usuario.findOne({ email });
+    if (!usuario) {
+      return res.status(401).json({
+        success: false,
+        error: "Credenciales inválidas",
+      });
+    }
+
+    // Verificar contraseña
+    const passwordValida = await bcrypt.compare(password, usuario.password);
+    if (!passwordValida) {
+      return res.status(401).json({
+        success: false,
+        error: "Credenciales inválidas",
+      });
+    }
+
+    // Verificar si el usuario está activo
+    if (!usuario.activo) {
+      return res.status(401).json({
+        success: false,
+        error: "Usuario desactivado",
+      });
+    }
+
+    // Generar JWT token
+    const token = jwt.sign(
+      {
+        userId: usuario._id,
+        email: usuario.email,
+        rol: usuario.rol,
+      },
+      process.env.JWT_SECRET || "tekashi_secret_key",
+      { expiresIn: "24h" }
+    );
+
+    // Actualizar último login
+    usuario.ultimoLogin = new Date();
+    await usuario.save();
+
+    res.json({
+      success: true,
+      usuario: usuario.toPublicJSON(),
+      token,
+      message: "Login exitoso",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/usuarios/registro - Registro de usuario
+router.post(
+  "/registro",
+  validarDatos(esquemaRegistro),
+  async (req, res, next) => {
+    try {
+      const { nombre, email, password, telefono, direccion, rol } = req.body;
+
+      // Verificar si el email ya existe
+      const emailExistente = await Usuario.findOne({ email });
+      if (emailExistente) {
+        return res.status(400).json({
+          success: false,
+          error: "El email ya está registrado",
+        });
+      }
+
+      // Crear nuevo usuario (el middleware se encarga de encriptar la contraseña)
+      const nuevoUsuario = new Usuario({
+        nombre,
+        email,
+        password, // El middleware pre('save') se encarga de encriptar
+        telefono: telefono || "",
+        direccion: direccion || "",
+        rol: rol || "CLIENTE",
+        activo: true,
+        fechaRegistro: new Date(),
+        ultimoLogin: new Date(),
+      });
+
+      await nuevoUsuario.save();
+
+      // Generar JWT token
+      const token = jwt.sign(
+        {
+          userId: nuevoUsuario._id,
+          email: nuevoUsuario.email,
+          rol: nuevoUsuario.rol,
+        },
+        process.env.JWT_SECRET || "tekashi_secret_key",
+        { expiresIn: "24h" }
+      );
+
+      res.status(201).json({
+        success: true,
+        usuario: nuevoUsuario.toPublicJSON(),
+        token,
+        message: "Usuario registrado exitosamente",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 // GET /api/usuarios - Obtener todos los usuarios (Solo admin)
 router.get(
@@ -508,4 +636,3 @@ router.get(
 );
 
 module.exports = router;
-
