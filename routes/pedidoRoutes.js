@@ -13,9 +13,15 @@ const Joi = require("joi");
 
 // Esquemas de validación
 const esquemaDetallePedido = Joi.object({
-  productoId: Joi.string().required(),
+  productoId: Joi.alternatives()
+    .try(
+      Joi.string().pattern(/^[0-9a-fA-F]{24}$/), // MongoDB ObjectId
+      Joi.string().min(1) // String ID
+    )
+    .required(),
   cantidad: Joi.number().integer().min(1).required(),
   precioUnitario: Joi.number().min(0).required(),
+  subtotal: Joi.number().min(0).required(),
 });
 
 const esquemaDireccionEnvio = Joi.object({
@@ -48,16 +54,38 @@ const esquemaInformacionPago = Joi.object({
 });
 
 const esquemaCrearPedido = Joi.object({
+  numeroPedido: Joi.string().optional(),
   detalles: Joi.array().items(esquemaDetallePedido).min(1).required(),
   direccionEnvio: esquemaDireccionEnvio.required(),
   informacionPago: esquemaInformacionPago.required(),
+  subtotal: Joi.number().min(0).required(),
+  impuestos: Joi.number().min(0).required(),
   costoEnvio: Joi.number().min(0).default(0),
   descuento: Joi.number().min(0).default(0),
+  total: Joi.number().min(0).required(),
+  estado: Joi.string()
+    .valid(
+      "pending",
+      "confirmed",
+      "processing",
+      "shipped",
+      "delivered",
+      "cancelled",
+      "refunded"
+    )
+    .default("pending"),
   puntosFidelidadUsados: Joi.number().min(0).default(0),
+  puntosFidelidadGanados: Joi.number().min(0).default(0),
   notas: Joi.string().max(500),
   metodoEnvio: Joi.string()
     .valid("standard", "express", "overnight")
     .default("standard"),
+  usuarioId: Joi.alternatives()
+    .try(
+      Joi.string().pattern(/^[0-9a-fA-F]{24}$/), // MongoDB ObjectId
+      Joi.string().min(1) // String ID
+    )
+    .optional(),
 });
 
 const esquemaActualizarEstado = Joi.object({
@@ -180,14 +208,21 @@ router.post(
   async (req, res, next) => {
     try {
       const {
+        numeroPedido,
         detalles,
         direccionEnvio,
         informacionPago,
+        subtotal,
+        impuestos,
         costoEnvio = 0,
         descuento = 0,
+        total,
+        estado = "pending",
         puntosFidelidadUsados = 0,
+        puntosFidelidadGanados = 0,
         notas,
         metodoEnvio = "standard",
+        usuarioId,
       } = req.body;
 
       // Verificar que todos los productos existen y tienen stock
@@ -210,23 +245,22 @@ router.post(
 
       // Crear el pedido
       const pedido = new Pedido({
-        numeroPedido: Pedido.generarNumeroPedido(),
-        usuarioId: req.usuario ? req.usuario.uid : null,
+        numeroPedido: numeroPedido || Pedido.generarNumeroPedido(),
+        usuarioId: usuarioId || (req.usuario ? req.usuario.uid : null),
         detalles,
         direccionEnvio,
         informacionPago,
+        subtotal,
+        impuestos,
         costoEnvio,
         descuento,
+        total,
+        estado,
         puntosFidelidadUsados,
+        puntosFidelidadGanados,
         notas,
         metodoEnvio,
       });
-
-      // Calcular totales
-      pedido.calcularTotales();
-
-      // Calcular puntos de fidelidad ganados (1 punto por cada $1000)
-      pedido.puntosFidelidadGanados = Math.floor(pedido.total / 1000);
 
       // Guardar el pedido
       await pedido.save();
@@ -463,7 +497,10 @@ router.delete("/:id", verificarFirebaseAuth, async (req, res, next) => {
     }
 
     // Actualizar estado a cancelado
-    await pedido.actualizarEstado("cancelled", "Pedido cancelado por el usuario");
+    await pedido.actualizarEstado(
+      "cancelled",
+      "Pedido cancelado por el usuario"
+    );
 
     // Restaurar stock de productos
     for (const detalle of pedido.detalles) {
@@ -490,5 +527,3 @@ router.delete("/:id", verificarFirebaseAuth, async (req, res, next) => {
 });
 
 module.exports = router;
-
-
