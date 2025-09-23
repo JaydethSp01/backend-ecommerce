@@ -80,10 +80,12 @@ const esquemaCrearPedido = Joi.object({
   metodoEnvio: Joi.string()
     .valid("standard", "express", "overnight")
     .default("standard"),
+  esInvitado: Joi.boolean().default(true),
   usuarioId: Joi.alternatives()
     .try(
       Joi.string().pattern(/^[0-9a-fA-F]{24}$/), // MongoDB ObjectId
-      Joi.string().min(1) // String ID
+      Joi.string().min(1), // String ID (Firebase UID)
+      Joi.allow(null, undefined) // Permitir null o undefined para invitados
     )
     .optional(),
 });
@@ -222,6 +224,7 @@ router.post(
         puntosFidelidadGanados = 0,
         notas,
         metodoEnvio = "standard",
+        esInvitado = true,
         usuarioId,
       } = req.body;
 
@@ -244,9 +247,8 @@ router.post(
       }
 
       // Crear el pedido
-      const pedido = new Pedido({
+      const pedidoData = {
         numeroPedido: numeroPedido || Pedido.generarNumeroPedido(),
-        usuarioId: usuarioId || (req.usuario ? req.usuario.uid : null),
         detalles,
         direccionEnvio,
         informacionPago,
@@ -260,7 +262,14 @@ router.post(
         puntosFidelidadGanados,
         notas,
         metodoEnvio,
-      });
+      };
+
+      // Solo agregar usuarioId si no es un pedido de invitado
+      if (!esInvitado && (usuarioId || req.usuario)) {
+        pedidoData.usuarioId = usuarioId || req.usuario.uid;
+      }
+
+      const pedido = new Pedido(pedidoData);
 
       // Guardar el pedido
       await pedido.save();

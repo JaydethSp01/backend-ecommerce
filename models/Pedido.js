@@ -109,7 +109,7 @@ const pedidoSchema = new mongoose.Schema(
       unique: true,
     },
     usuarioId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: mongoose.Schema.Types.Mixed, // Permite tanto ObjectId como string (Firebase UID)
       ref: "Usuario",
       required: false, // Permitir pedidos de invitados
     },
@@ -324,5 +324,3 @@ pedidoSchema.statics.obtenerProductosMasVendidos = function (limite = 10) {
 };
 
 module.exports = mongoose.model("Pedido", pedidoSchema);
-
-
