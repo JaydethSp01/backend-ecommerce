@@ -17,6 +17,7 @@ const wishlistRoutes = require("./routes/wishlistRoutes");
 const notificacionRoutes = require("./routes/notificacionRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const pedidoRoutes = require("./routes/pedidoRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
 
 // Import middleware
 const errorHandler = require("./middleware/errorHandler");
@@ -32,70 +33,34 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(compression());
 
-// Rate limiting - Más permisivo para desarrollo
+// Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Aumentado a 1000 requests por 15 minutos
-  message: {
-    error: "Too many requests",
-    message: "Too many requests from this IP, please try again later.",
-    retryAfter: "15 minutes",
-  },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  skip: (req) => {
-    // Skip rate limiting for health checks and simple endpoints
-    return (
-      req.path === "/api/health" ||
-      req.path === "/api/test" ||
-      req.path === "/api/simple"
-    );
-  },
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: "Too many requests from this IP, please try again later.",
 });
 app.use(limiter);
 
 // CORS configuration - Allow all origins for development
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-
-      // Allow all origins for development
-      return callback(null, true);
-    },
+    origin: true, // Allow all origins
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: [
       "Content-Type",
       "Authorization",
       "X-Requested-With",
       "Accept",
       "Origin",
-      "Access-Control-Request-Method",
-      "Access-Control-Request-Headers",
-      "Cache-Control",
-      "Pragma",
     ],
-    exposedHeaders: [
-      "X-Total-Count",
-      "X-Page-Count",
-      "X-RateLimit-Limit",
-      "X-RateLimit-Remaining",
-    ],
+    exposedHeaders: ["X-Total-Count", "X-Page-Count"],
     optionsSuccessStatus: 200, // For legacy browser support
-    preflightContinue: false,
   })
 );
 
-// Handle preflight requests explicitly
-app.options("*", (req, res) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers, Cache-Control, Pragma');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.sendStatus(200);
-});
+// Handle preflight requests
+app.options("*", cors());
 
 // Body parsing middleware
 app.use(express.json({ limit: "10mb" }));
@@ -201,6 +166,7 @@ app.use("/api/wishlists", wishlistRoutes);
 app.use("/api/notificaciones", notificacionRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/pedidos", pedidoRoutes);
+app.use("/api/reviews", reviewRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {
@@ -217,6 +183,7 @@ app.get("/", (req, res) => {
       notificaciones: "/api/notificaciones",
       admin: "/api/admin",
       pedidos: "/api/pedidos",
+      reviews: "/api/reviews",
     },
   });
 });

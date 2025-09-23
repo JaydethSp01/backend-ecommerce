@@ -1,6 +1,5 @@
 const express = require("express");
 const router = express.Router();
-const cors = require("cors");
 const Producto = require("../models/Producto");
 const TipoProducto = require("../models/TipoProducto");
 const {
@@ -11,68 +10,9 @@ const {
 const { validarDatos } = require("../middleware/authMiddleware");
 const Joi = require("joi");
 
-// CORS específico para rutas de productos
-router.use(
-  cors({
-    origin: true,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
-      "Origin",
-    ],
-  })
-);
-
-// Manejar preflight requests para todas las rutas
-router.options("*", (req, res) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-  );
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With, Accept, Origin"
-  );
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.sendStatus(200);
-});
-
 // Endpoint simple sin middleware para probar
 router.get("/test", async (req, res) => {
-  res.json({
-    message: "API funcionando",
-    timestamp: new Date().toISOString(),
-    cors: "CORS habilitado",
-    rateLimit: "Rate limiting configurado",
-  });
-});
-
-// Endpoint simple para obtener productos sin autenticación
-router.get("/simple", async (req, res) => {
-  try {
-    const productos = await Producto.find({ activo: true })
-      .select("nombre precio marca imagenPrincipal")
-      .limit(10)
-      .lean();
-
-    res.json({
-      success: true,
-      data: productos,
-      count: productos.length,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: "Error interno del servidor",
-      message: error.message,
-    });
-  }
+  res.json({ message: "API funcionando", timestamp: new Date().toISOString() });
 });
 
 // Esquemas de validación
@@ -109,17 +49,6 @@ const esquemaProducto = Joi.object({
 // GET /api/producto - Obtener todos los productos
 router.get("/", async (req, res, next) => {
   try {
-    // Agregar headers CORS explícitos
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS"
-    );
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Requested-With, Accept, Origin"
-    );
-
     const {
       pagina = 1,
       limite = 20,
@@ -183,17 +112,9 @@ router.get("/", async (req, res, next) => {
         total,
         paginas: Math.ceil(total / parseInt(limite)),
       },
-      cors: "CORS habilitado",
-      timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("Error en GET /api/producto:", error);
-    res.status(500).json({
-      success: false,
-      error: "Error interno del servidor",
-      message: error.message,
-      timestamp: new Date().toISOString(),
-    });
+    next(error);
   }
 });
 
