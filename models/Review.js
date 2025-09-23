@@ -244,7 +244,12 @@ reviewSchema.statics.obtenerEstadisticasProducto = async function (productoId) {
               $round: [
                 {
                   $multiply: [
-                    { $divide: ["$totalUtil", { $add: ["$totalUtil", "$totalNoUtil"] }] },
+                    {
+                      $divide: [
+                        "$totalUtil",
+                        { $add: ["$totalUtil", "$totalNoUtil"] },
+                      ],
+                    },
                     100,
                   ],
                 },
@@ -272,7 +277,7 @@ reviewSchema.statics.obtenerEstadisticasProducto = async function (productoId) {
   }
 
   const stats = estadisticas[0];
-  
+
   // Calcular distribución de calificaciones
   const distribucion = [0, 0, 0, 0, 0];
   stats.distribucionCalificaciones.forEach((calificacion) => {
@@ -384,7 +389,7 @@ reviewSchema.post("save", async function (doc) {
       const estadisticas = await this.constructor.obtenerEstadisticasProducto(
         doc.productoId
       );
-      
+
       await Producto.findByIdAndUpdate(doc.productoId, {
         $set: {
           calificacionPromedio: estadisticas.promedioCalificacion,
@@ -400,4 +405,3 @@ reviewSchema.post("save", async function (doc) {
 const Review = mongoose.model("Review", reviewSchema);
 
 module.exports = Review;
-
