@@ -238,17 +238,37 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
+// POST /api/reviews/test - Endpoint de prueba
+router.post("/test", (req, res) => {
+  console.log("🔍 POST /api/reviews/test - Endpoint de prueba");
+  res.json({ success: true, message: "Endpoint de prueba funcionando" });
+});
+
 // POST /api/reviews - Crear nueva review
 router.post(
   "/",
   // verificarAuth, // Temporalmente comentado para testing
-  validarDatos(esquemaCrearReview),
+  // validarDatos(esquemaCrearReview), // Temporalmente comentado para debugging
   async (req, res, next) => {
     try {
-      const { productoId, usuarioId, rating, titulo, comentario, pros, contras, recomendado, verificacionCompra } = req.body;
+      console.log("🔍 POST /api/reviews - Iniciando endpoint");
+      console.log("🔍 POST /api/reviews - Request body:", req.body);
+      const {
+        productoId,
+        usuarioId,
+        rating,
+        titulo,
+        comentario,
+        pros,
+        contras,
+        recomendado,
+        verificacionCompra,
+      } = req.body;
 
       // Verificar que el producto existe
+      console.log("🔍 Buscando producto con ID:", productoId);
       const producto = await Producto.findById(productoId);
+      console.log("🔍 Producto encontrado:", producto ? "Sí" : "No");
       if (!producto) {
         return res.status(404).json({
           success: false,
