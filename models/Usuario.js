@@ -19,7 +19,10 @@ const usuarioSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, "La contraseña es requerida"],
+      required: function () {
+        // La contraseña es requerida solo si no es un usuario de Firebase
+        return !this.firebaseUid;
+      },
       minlength: [6, "La contraseña debe tener al menos 6 caracteres"],
     },
     telefono: {
@@ -54,6 +57,10 @@ const usuarioSchema = new mongoose.Schema(
       type: String,
       unique: true,
       sparse: true, // Permite valores null únicos
+    },
+    avatar: {
+      type: String,
+      default: "",
     },
     // Campos para geolocalización
     ubicacion: {
@@ -93,8 +100,14 @@ usuarioSchema.index({ activo: 1 });
 
 // Middleware para encriptar contraseña antes de guardar
 usuarioSchema.pre("save", async function (next) {
-  // Solo encriptar si la contraseña ha sido modificada
-  if (!this.isModified("password")) return next();
+  // Solo encriptar si la contraseña ha sido modificada y es una string válida
+  if (
+    !this.isModified("password") ||
+    !this.password ||
+    typeof this.password !== "string" ||
+    this.password.trim() === ""
+  )
+    return next();
 
   try {
     // Encriptar contraseña con bcrypt
@@ -108,6 +121,8 @@ usuarioSchema.pre("save", async function (next) {
 
 // Método para comparar contraseñas
 usuarioSchema.methods.compararPassword = async function (passwordCandidata) {
+  // Si no hay contraseña (usuario de Firebase), no se puede comparar
+  if (!this.password) return false;
   return await bcrypt.compare(passwordCandidata, this.password);
 };
 

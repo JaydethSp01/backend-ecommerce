@@ -207,36 +207,55 @@ const verificarPropietario = async (req, res, next) => {
 const autenticacionOpcional = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
+    console.log("🔍 Auth header:", authHeader ? "Presente" : "Ausente");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       // No hay token, continuar sin autenticación
-      req.usuario = null;
-      return next();
-    }
-
-    if (!firebaseInitialized) {
-      // Firebase no disponible, continuar sin autenticación
+      console.log("⚠️ No hay token, continuando sin autenticación");
       req.usuario = null;
       return next();
     }
 
     const token = authHeader.split(" ")[1];
+    console.log("🔍 Token recibido:", token.substring(0, 20) + "...");
+    let usuario = null;
 
-    try {
-      const decodedToken = await admin.auth().verifyIdToken(token);
-
-      // Simplificado: no hacer consulta a la base de datos
-      req.usuario = {
-        uid: decodedToken.uid,
-        email: decodedToken.email,
-        name: decodedToken.name,
-        userId: null,
-      };
-    } catch (tokenError) {
-      // Token inválido, continuar sin autenticación
-      req.usuario = null;
+    // Intentar verificar como token de Firebase primero
+    if (firebaseInitialized) {
+      try {
+        const decodedToken = await admin.auth().verifyIdToken(token);
+        usuario = await Usuario.findOne({ firebaseUid: decodedToken.uid });
+        if (usuario) {
+          console.log("✅ Usuario autenticado con Firebase:", usuario._id);
+          req.usuario = usuario;
+          return next();
+        }
+      } catch (firebaseError) {
+        console.log("❌ Token no es de Firebase:", firebaseError.message);
+      }
     }
 
+    // Si no es token de Firebase, intentar como token del backend
+    try {
+      const decodedToken = jwt.verify(
+        token,
+        process.env.JWT_SECRET || "fallback-secret"
+      );
+      console.log("🔍 Token del backend decodificado:", decodedToken);
+      usuario = await Usuario.findById(decodedToken.userId);
+
+      if (usuario) {
+        console.log("✅ Usuario autenticado con backend:", usuario._id);
+        req.usuario = usuario;
+        return next();
+      }
+    } catch (backendError) {
+      console.log("❌ Token no es del backend:", backendError.message);
+    }
+
+    // Si no se pudo autenticar, continuar sin autenticación
+    console.log("⚠️ No se pudo autenticar, continuando sin autenticación");
+    req.usuario = null;
     next();
   } catch (error) {
     console.error("Error en autenticacionOpcional:", error);
@@ -249,27 +268,45 @@ const autenticacionOpcional = async (req, res, next) => {
 // Middleware para validar datos con Joi
 const validarDatos = (schema) => {
   return (req, res, next) => {
-    const { error, value } = schema.validate(req.body, {
-      abortEarly: false,
-      stripUnknown: true,
-    });
+    try {
+      // Limpiar el body de valores undefined
+      const cleanBody = {};
+      for (const [key, value] of Object.entries(req.body || {})) {
+        if (value !== undefined) {
+          cleanBody[key] = value;
+        }
+      }
 
-    if (error) {
-      const errores = error.details.map((detail) => ({
-        campo: detail.path.join("."),
-        mensaje: detail.message,
-      }));
+      const { error, value } = schema.validate(cleanBody, {
+        abortEarly: false,
+        stripUnknown: true,
+        allowUnknown: false,
+      });
 
+      if (error) {
+        const errores = error.details.map((detail) => ({
+          campo: detail.path.join("."),
+          mensaje: detail.message,
+        }));
+
+        return res.status(400).json({
+          success: false,
+          error: "Datos de entrada inválidos",
+          message: "Los datos proporcionados no son válidos",
+          detalles: errores,
+        });
+      }
+
+      req.body = value;
+      next();
+    } catch (validationError) {
+      console.error("Error en validación:", validationError);
       return res.status(400).json({
         success: false,
-        error: "Datos de entrada inválidos",
-        message: "Los datos proporcionados no son válidos",
-        detalles: errores,
+        error: "Error de validación",
+        message: "Error interno en la validación de datos",
       });
     }
-
-    req.body = value;
-    next();
   };
 };
 
@@ -308,8 +345,73 @@ const manejarErrorAuth = (error, req, res, next) => {
   });
 };
 
+// Middleware híbrido para verificar autenticación (Firebase o Backend)
+const verificarAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        error: "Token requerido",
+        message: "Debe proporcionar un token de autorización válido",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+    let usuario = null;
+
+    console.log("🔍 Token recibido:", token.substring(0, 20) + "...");
+    console.log("🔍 Longitud del token:", token.length);
+
+    // Intentar verificar como token de Firebase primero
+    if (firebaseInitialized) {
+      try {
+        const decodedToken = await admin.auth().verifyIdToken(token);
+        usuario = await Usuario.findOne({ firebaseUid: decodedToken.uid });
+
+        if (usuario) {
+          req.usuario = usuario;
+          return next();
+        }
+      } catch (firebaseError) {
+        console.log("❌ Token no es de Firebase:", firebaseError.message);
+      }
+    }
+
+    // Si no es token de Firebase, intentar como token del backend
+    try {
+      const decodedToken = jwt.verify(
+        token,
+        process.env.JWT_SECRET || "fallback-secret"
+      );
+      usuario = await Usuario.findById(decodedToken.userId);
+
+      if (usuario) {
+        req.usuario = usuario;
+        return next();
+      }
+    } catch (backendError) {
+      console.log("❌ Token no es del backend:", backendError.message);
+    }
+
+    return res.status(401).json({
+      success: false,
+      error: "Token inválido",
+      message: "El token proporcionado no es válido",
+    });
+  } catch (error) {
+    console.error("Error en verificarAuth:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Error de autenticación",
+      message: "Error interno del servidor",
+    });
+  }
+};
+
 module.exports = {
   verificarFirebaseAuth,
+  verificarAuth,
   verificarAdmin,
   verificarPropietario,
   autenticacionOpcional,

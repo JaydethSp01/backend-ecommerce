@@ -3,8 +3,9 @@ const router = express.Router();
 const Favorito = require("../models/Favorito");
 const Producto = require("../models/Producto");
 const {
-  verificarFirebaseAuth,
+  verificarAuth,
   verificarPropietario,
+  autenticacionOpcional,
 } = require("../middleware/authMiddleware");
 const { validarDatos } = require("../middleware/authMiddleware");
 const Joi = require("joi");
@@ -19,8 +20,23 @@ const esquemaFavorito = Joi.object({
 });
 
 // GET /api/favoritos - Obtener favoritos del usuario autenticado
-router.get("/", verificarFirebaseAuth, async (req, res, next) => {
+router.get("/", autenticacionOpcional, async (req, res, next) => {
   try {
+    // Si no hay usuario autenticado, retornar array vacío para modo invitado
+    if (!req.usuario || !req.usuario._id) {
+      return res.json({
+        success: true,
+        data: [],
+        paginacion: {
+          pagina: 1,
+          limite: 20,
+          total: 0,
+          paginas: 0,
+        },
+        message: "Modo invitado - favoritos no disponibles",
+      });
+    }
+
     const { pagina = 1, limite = 20, ordenar = "fechaAgregado" } = req.query;
 
     const skip = (parseInt(pagina) - 1) * parseInt(limite);
@@ -53,7 +69,7 @@ router.get("/", verificarFirebaseAuth, async (req, res, next) => {
 // GET /api/favoritos/usuario/:usuarioId - Obtener favoritos de un usuario específico (Solo admin o propio usuario)
 router.get(
   "/usuario/:usuarioId",
-  verificarFirebaseAuth,
+  verificarAuth,
   verificarPropietario,
   async (req, res, next) => {
     try {
@@ -89,48 +105,56 @@ router.get(
 );
 
 // GET /api/favoritos/producto/:productoId - Obtener usuarios que tienen un producto en favoritos (Solo admin)
-router.get(
-  "/producto/:productoId",
-  verificarFirebaseAuth,
-  async (req, res, next) => {
-    try {
-      const { productoId } = req.params;
-      const { pagina = 1, limite = 20 } = req.query;
+router.get("/producto/:productoId", verificarAuth, async (req, res, next) => {
+  try {
+    const { productoId } = req.params;
+    const { pagina = 1, limite = 20 } = req.query;
 
-      const skip = (parseInt(pagina) - 1) * parseInt(limite);
+    const skip = (parseInt(pagina) - 1) * parseInt(limite);
 
-      const usuarios = await Favorito.obtenerUsuariosFavorito(productoId, {
+    const usuarios = await Favorito.obtenerUsuariosFavorito(productoId, {
+      limite: parseInt(limite),
+      desplazamiento: skip,
+    });
+
+    const total = await Favorito.countDocuments({
+      productoId,
+      activo: true,
+    });
+
+    res.json({
+      success: true,
+      data: usuarios,
+      paginacion: {
+        pagina: parseInt(pagina),
         limite: parseInt(limite),
-        desplazamiento: skip,
-      });
-
-      const total = await Favorito.countDocuments({
-        productoId,
-        activo: true,
-      });
-
-      res.json({
-        success: true,
-        data: usuarios,
-        paginacion: {
-          pagina: parseInt(pagina),
-          limite: parseInt(limite),
-          total,
-          paginas: Math.ceil(total / parseInt(limite)),
-        },
-      });
-    } catch (error) {
-      next(error);
-    }
+        total,
+        paginas: Math.ceil(total / parseInt(limite)),
+      },
+    });
+  } catch (error) {
+    next(error);
   }
-);
+});
 
 // GET /api/favoritos/verificar/:productoId - Verificar si un producto está en favoritos
 router.get(
   "/verificar/:productoId",
-  verificarFirebaseAuth,
+  autenticacionOpcional,
   async (req, res, next) => {
     try {
+      // Si no hay usuario autenticado, retornar false para modo invitado
+      if (!req.usuario || !req.usuario._id) {
+        return res.json({
+          success: true,
+          data: {
+            enFavoritos: false,
+            favorito: null,
+          },
+          message: "Modo invitado - favoritos no disponibles",
+        });
+      }
+
       const { productoId } = req.params;
 
       const favorito = await Favorito.estaEnFavoritos(
@@ -152,7 +176,7 @@ router.get(
 );
 
 // GET /api/favoritos/estadisticas - Obtener estadísticas de favoritos
-router.get("/estadisticas", verificarFirebaseAuth, async (req, res, next) => {
+router.get("/estadisticas", verificarAuth, async (req, res, next) => {
   try {
     const estadisticas = await Favorito.obtenerEstadisticas(req.usuario._id);
 
@@ -168,10 +192,25 @@ router.get("/estadisticas", verificarFirebaseAuth, async (req, res, next) => {
 // POST /api/favoritos - Agregar producto a favoritos
 router.post(
   "/",
-  verificarFirebaseAuth,
+  autenticacionOpcional,
   validarDatos(esquemaFavorito),
   async (req, res, next) => {
     try {
+      console.log(
+        "🔍 POST /api/favoritos - Usuario:",
+        req.usuario ? req.usuario._id : "null"
+      );
+
+      // Si no hay usuario autenticado, retornar error para modo invitado
+      if (!req.usuario || !req.usuario._id) {
+        console.log("❌ No hay usuario autenticado");
+        return res.status(401).json({
+          success: false,
+          error: "Autenticación requerida",
+          message: "Debe iniciar sesión para agregar productos a favoritos",
+        });
+      }
+
       const { productoId, ...datosAdicionales } = req.body;
 
       // Verificar que el producto existe
@@ -207,7 +246,7 @@ router.post(
 );
 
 // DELETE /api/favoritos/:productoId - Remover producto de favoritos
-router.delete("/:productoId", verificarFirebaseAuth, async (req, res, next) => {
+router.delete("/:productoId", verificarAuth, async (req, res, next) => {
   try {
     const { productoId } = req.params;
 
@@ -229,7 +268,7 @@ router.delete("/:productoId", verificarFirebaseAuth, async (req, res, next) => {
 });
 
 // PUT /api/favoritos/:productoId - Actualizar favorito
-router.put("/:productoId", verificarFirebaseAuth, async (req, res, next) => {
+router.put("/:productoId", verificarAuth, async (req, res, next) => {
   try {
     const { productoId } = req.params;
     const { notas, prioridad, notificarOferta, notificarStock } = req.body;
@@ -271,40 +310,36 @@ router.put("/:productoId", verificarFirebaseAuth, async (req, res, next) => {
 });
 
 // PUT /api/favoritos/:productoId/vista - Incrementar vista de favorito
-router.put(
-  "/:productoId/vista",
-  verificarFirebaseAuth,
-  async (req, res, next) => {
-    try {
-      const { productoId } = req.params;
+router.put("/:productoId/vista", verificarAuth, async (req, res, next) => {
+  try {
+    const { productoId } = req.params;
 
-      const favorito = await Favorito.findOne({
-        usuarioId: req.usuario._id,
-        productoId,
-        activo: true,
+    const favorito = await Favorito.findOne({
+      usuarioId: req.usuario._id,
+      productoId,
+      activo: true,
+    });
+
+    if (!favorito) {
+      return res.status(404).json({
+        success: false,
+        error: "Favorito no encontrado",
       });
-
-      if (!favorito) {
-        return res.status(404).json({
-          success: false,
-          error: "Favorito no encontrado",
-        });
-      }
-
-      await favorito.incrementarVista();
-
-      res.json({
-        success: true,
-        message: "Vista registrada exitosamente",
-      });
-    } catch (error) {
-      next(error);
     }
+
+    await favorito.incrementarVista();
+
+    res.json({
+      success: true,
+      message: "Vista registrada exitosamente",
+    });
+  } catch (error) {
+    next(error);
   }
-);
+});
 
 // GET /api/favoritos/ofertas - Obtener productos en favoritos que están en oferta
-router.get("/ofertas", verificarFirebaseAuth, async (req, res, next) => {
+router.get("/ofertas", verificarAuth, async (req, res, next) => {
   try {
     const favoritos = await Favorito.find({
       usuarioId: req.usuario._id,
@@ -336,7 +371,7 @@ router.get("/ofertas", verificarFirebaseAuth, async (req, res, next) => {
 });
 
 // GET /api/favoritos/stock-bajo - Obtener productos en favoritos con stock bajo
-router.get("/stock-bajo", verificarFirebaseAuth, async (req, res, next) => {
+router.get("/stock-bajo", verificarAuth, async (req, res, next) => {
   try {
     const { limiteStock = 5 } = req.query;
 
@@ -366,6 +401,53 @@ router.get("/stock-bajo", verificarFirebaseAuth, async (req, res, next) => {
     res.json({
       success: true,
       data: productosStockBajo,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Endpoint de prueba para verificar autenticación
+router.get("/test-auth", autenticacionOpcional, async (req, res, next) => {
+  try {
+    console.log(
+      "🔍 Test auth - Usuario:",
+      req.usuario ? req.usuario._id : "null"
+    );
+    res.json({
+      success: true,
+      usuario: req.usuario ? req.usuario._id : null,
+      message: req.usuario ? "Usuario autenticado" : "Usuario no autenticado",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Endpoint de prueba POST para verificar autenticación
+router.post("/test-auth", autenticacionOpcional, async (req, res, next) => {
+  try {
+    console.log(
+      "🔍 POST Test auth - Usuario:",
+      req.usuario ? req.usuario._id : "null"
+    );
+    res.json({
+      success: true,
+      usuario: req.usuario ? req.usuario._id : null,
+      message: req.usuario ? "Usuario autenticado" : "Usuario no autenticado",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Endpoint simple sin middleware para probar
+router.get("/simple-test", async (req, res, next) => {
+  try {
+    res.json({
+      success: true,
+      message: "Endpoint simple funcionando",
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
     next(error);

@@ -18,6 +18,7 @@ const notificacionRoutes = require("./routes/notificacionRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const pedidoRoutes = require("./routes/pedidoRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes");
 
 // Import middleware
 const errorHandler = require("./middleware/errorHandler");
@@ -27,7 +28,7 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 // Trust proxy para Render (necesario para rate limiting)
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 
 // Security middleware
 app.use(helmet());
@@ -35,8 +36,8 @@ app.use(compression());
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 100000, // 15 minutes
+  max: 10000, // limit each IP to 100 requests per windowMs
   message: "Too many requests from this IP, please try again later.",
 });
 app.use(limiter);
@@ -119,7 +120,7 @@ app.get("/api/debug", (req, res) => {
     timestamp: new Date().toISOString(),
     mongooseState: mongoose.connection.readyState,
     env: process.env.NODE_ENV,
-    mongodbUri: process.env.MONGODB_URI ? "Set" : "Not set"
+    mongodbUri: process.env.MONGODB_URI ? "Set" : "Not set",
   });
 });
 
@@ -152,7 +153,65 @@ app.get("/api/producto/test", (req, res) => {
     success: true,
     message: "Producto endpoint funcionando",
     timestamp: new Date().toISOString(),
-    connectionState: mongoose.connection.readyState
+    connectionState: mongoose.connection.readyState,
+  });
+});
+
+// Endpoint simple para probar
+app.get("/api/test-simple", (req, res) => {
+  res.json({
+    success: true,
+    message: "Endpoint simple funcionando",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Endpoint para probar autenticación manual
+app.get("/api/test-auth-manual", (req, res) => {
+  const authHeader = req.headers.authorization;
+  console.log("🔍 Auth header:", authHeader ? "Presente" : "Ausente");
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.json({
+      success: true,
+      usuario: null,
+      message: "No hay token",
+    });
+  }
+
+  const token = authHeader.split(" ")[1];
+  console.log("🔍 Token recibido:", token.substring(0, 20) + "...");
+
+  try {
+    const jwt = require("jsonwebtoken");
+    const decodedToken = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "fallback-secret"
+    );
+    console.log("🔍 Token decodificado:", decodedToken);
+
+    res.json({
+      success: true,
+      usuario: decodedToken.userId,
+      message: "Usuario autenticado manualmente",
+    });
+  } catch (error) {
+    console.log("❌ Error al verificar token:", error.message);
+    res.json({
+      success: true,
+      usuario: null,
+      message: "Token inválido",
+    });
+  }
+});
+
+// Endpoint para verificar configuración
+app.get("/api/test-config", (req, res) => {
+  res.json({
+    success: true,
+    jwtSecret: process.env.JWT_SECRET ? "Configurado" : "No configurado",
+    fallbackSecret: "fallback-secret",
+    message: "Configuración del servidor",
   });
 });
 
@@ -167,6 +226,7 @@ app.use("/api/notificaciones", notificacionRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/pedidos", pedidoRoutes);
 app.use("/api/reviews", reviewRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {
@@ -184,6 +244,7 @@ app.get("/", (req, res) => {
       admin: "/api/admin",
       pedidos: "/api/pedidos",
       reviews: "/api/reviews",
+      dashboard: "/api/dashboard",
     },
   });
 });
@@ -223,10 +284,11 @@ process.on("SIGINT", async () => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📱 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`🌐 API URL: http://localhost:${PORT}`);
+  console.log(`🌐 Network URL: http://0.0.0.0:${PORT}`);
 });
 
 module.exports = app;

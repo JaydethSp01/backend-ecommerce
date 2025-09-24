@@ -5,6 +5,7 @@ const Producto = require("../models/Producto");
 const {
   verificarFirebaseAuth,
   verificarPropietario,
+  autenticacionOpcional,
 } = require("../middleware/authMiddleware");
 const { validarDatos } = require("../middleware/authMiddleware");
 const Joi = require("joi");
@@ -29,8 +30,23 @@ const esquemaProductoWishlist = Joi.object({
 });
 
 // GET /api/wishlists - Obtener wishlists del usuario autenticado
-router.get("/", verificarFirebaseAuth, async (req, res, next) => {
+router.get("/", autenticacionOpcional, async (req, res, next) => {
   try {
+    // Si no hay usuario autenticado, retornar array vacío para modo invitado
+    if (!req.usuario || !req.usuario._id) {
+      return res.json({
+        success: true,
+        data: [],
+        paginacion: {
+          pagina: 1,
+          limite: 20,
+          total: 0,
+          paginas: 0,
+        },
+        message: "Modo invitado - wishlists no disponibles",
+      });
+    }
+
     const { pagina = 1, limite = 20 } = req.query;
 
     const skip = (parseInt(pagina) - 1) * parseInt(limite);

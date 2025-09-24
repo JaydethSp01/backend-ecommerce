@@ -22,40 +22,47 @@ const esquemaRegistro = Joi.object({
   nombre: Joi.string().required().max(100),
   email: Joi.string().email().required(),
   password: Joi.string().required().min(6),
-  telefono: Joi.string().max(20),
-  direccion: Joi.string().max(200),
+  telefono: Joi.string().allow("").max(20),
+  direccion: Joi.string().allow("").max(200),
   rol: Joi.string().valid("CLIENTE", "ADMIN").default("CLIENTE"),
 });
 
 const esquemaUsuario = Joi.object({
   nombre: Joi.string().required().max(100),
   email: Joi.string().email().required(),
-  telefono: Joi.string().max(20),
-  direccion: Joi.string().max(200),
+  telefono: Joi.string().allow("").max(20),
+  direccion: Joi.string().allow("").max(200),
   rol: Joi.string().valid("CLIENTE", "ADMIN").default("CLIENTE"),
   activo: Joi.boolean().default(true),
   ubicacion: Joi.object({
-    latitud: Joi.number().min(-90).max(90),
-    longitud: Joi.number().min(-180).max(180),
-    direccionCompleta: Joi.string(),
-    ciudad: Joi.string(),
-    pais: Joi.string(),
-  }),
+    latitud: Joi.number().min(-90).max(90).allow(null),
+    longitud: Joi.number().min(-180).max(180).allow(null),
+    direccionCompleta: Joi.string().allow(""),
+    ciudad: Joi.string().allow(""),
+    pais: Joi.string().allow(""),
+  }).allow(null),
   idioma: Joi.string().valid("es", "en", "fr", "pt").default("es"),
 });
 
 const esquemaActualizacionUsuario = Joi.object({
-  nombre: Joi.string().max(100),
-  telefono: Joi.string().max(20),
-  direccion: Joi.string().max(200),
+  nombre: Joi.string().allow("").max(100),
+  telefono: Joi.string().allow("").max(20),
+  direccion: Joi.string().allow("").max(200),
   ubicacion: Joi.object({
-    latitud: Joi.number().min(-90).max(90),
-    longitud: Joi.number().min(-180).max(180),
-    direccionCompleta: Joi.string(),
-    ciudad: Joi.string(),
-    pais: Joi.string(),
-  }),
-  idioma: Joi.string().valid("es", "en", "fr", "pt"),
+    latitud: Joi.number().min(-90).max(90).allow(null),
+    longitud: Joi.number().min(-180).max(180).allow(null),
+    direccionCompleta: Joi.string().allow(""),
+    ciudad: Joi.string().allow(""),
+    pais: Joi.string().allow(""),
+  }).allow(null),
+  idioma: Joi.string().valid("es", "en", "fr", "pt").allow(""),
+});
+
+const esquemaSyncFirebase = Joi.object({
+  firebaseUid: Joi.string().required(),
+  email: Joi.string().email().required(),
+  displayName: Joi.string().allow("").max(100),
+  photoURL: Joi.string().allow("").uri(),
 });
 
 // POST /api/usuarios/login - Login de usuario
@@ -634,5 +641,91 @@ router.get(
     }
   }
 );
+
+// POST /api/usuarios/sync-firebase - Sincronizar usuario de Firebase con la base de datos local
+router.post(
+  "/sync-firebase",
+  validarDatos(esquemaSyncFirebase),
+  async (req, res, next) => {
+    try {
+      const { firebaseUid, email, displayName, photoURL } = req.body;
+
+      if (!firebaseUid || !email) {
+        return res.status(400).json({
+          success: false,
+          error: "firebaseUid y email son requeridos",
+        });
+      }
+
+      // Verificar si el usuario ya existe
+      let usuario = await Usuario.findOne({
+        $or: [{ firebaseUid: firebaseUid }, { email: email }],
+      });
+
+      if (usuario) {
+        // Actualizar datos si el usuario existe
+        usuario.firebaseUid = firebaseUid;
+        usuario.nombre = displayName || usuario.nombre;
+        usuario.avatar = photoURL || usuario.avatar;
+        usuario.ultimoLogin = new Date();
+        await usuario.save();
+
+        return res.json({
+          success: true,
+          data: usuario.toPublicJSON(),
+          message: "Usuario actualizado exitosamente",
+          isNewUser: false,
+        });
+      }
+
+      // Crear nuevo usuario
+      const nuevoUsuario = new Usuario({
+        firebaseUid: firebaseUid,
+        email: email,
+        nombre: displayName || "Usuario",
+        avatar: photoURL || "",
+        rol: "CLIENTE",
+        activo: true,
+        fechaRegistro: new Date(),
+        ultimoLogin: new Date(),
+        // No establecer password para usuarios de Firebase
+      });
+
+      await nuevoUsuario.save();
+
+      res.status(201).json({
+        success: true,
+        data: nuevoUsuario.toPublicJSON(),
+        message: "Usuario sincronizado exitosamente",
+        isNewUser: true,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// GET /api/usuarios/firebase/:firebaseUid - Obtener usuario por Firebase UID
+router.get("/firebase/:firebaseUid", async (req, res, next) => {
+  try {
+    const { firebaseUid } = req.params;
+
+    const usuario = await Usuario.findOne({ firebaseUid }).select("-password");
+
+    if (!usuario) {
+      return res.status(404).json({
+        success: false,
+        error: "Usuario no encontrado",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: usuario,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 module.exports = router;
