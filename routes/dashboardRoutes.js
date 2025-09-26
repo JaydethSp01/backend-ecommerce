@@ -10,6 +10,31 @@ const {
   verificarPropietario,
 } = require("../middleware/authMiddleware");
 
+// Endpoint de prueba para verificar Firebase
+router.get("/test-firebase", async (req, res) => {
+  try {
+    const { initializeFirebase } = require("../middleware/authMiddleware");
+    initializeFirebase();
+    
+    res.json({
+      success: true,
+      message: "Firebase test endpoint",
+      timestamp: new Date().toISOString(),
+      firebaseConfig: {
+        projectId: process.env.FIREBASE_PROJECT_ID ? "Configurado" : "No configurado",
+        privateKey: process.env.FIREBASE_PRIVATE_KEY ? "Configurado" : "No configurado",
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL ? "Configurado" : "No configurado"
+      }
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // GET /api/dashboard/stats/:userId - Obtener estadísticas del dashboard
 router.get("/stats/:userId", verificarAuth, async (req, res, next) => {
   try {
