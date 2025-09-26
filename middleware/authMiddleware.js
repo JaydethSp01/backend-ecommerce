@@ -349,7 +349,10 @@ const manejarErrorAuth = (error, req, res, next) => {
 const verificarAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
+    console.log("🔍 Auth header recibido:", authHeader ? "Presente" : "Ausente");
+    
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log("❌ No hay token de autorización");
       return res.status(401).json({
         success: false,
         error: "Token requerido",
@@ -362,20 +365,44 @@ const verificarAuth = async (req, res, next) => {
 
     console.log("🔍 Token recibido:", token.substring(0, 20) + "...");
     console.log("🔍 Longitud del token:", token.length);
+    console.log("🔍 Firebase inicializado:", firebaseInitialized);
 
     // Intentar verificar como token de Firebase primero
     if (firebaseInitialized) {
       try {
+        console.log("🔐 Verificando token con Firebase...");
         const decodedToken = await admin.auth().verifyIdToken(token);
+        console.log("✅ Token de Firebase válido:", decodedToken.uid);
+        
         usuario = await Usuario.findOne({ firebaseUid: decodedToken.uid });
+        console.log("👤 Usuario encontrado en BD:", usuario ? usuario._id : "No encontrado");
 
         if (usuario) {
+          req.usuario = usuario;
+          console.log("✅ Usuario autenticado correctamente");
+          return next();
+        } else {
+          console.log("🔄 Usuario no encontrado, creando usuario en BD...");
+          // Crear usuario si no existe
+          usuario = new Usuario({
+            firebaseUid: decodedToken.uid,
+            nombre: decodedToken.name || "Usuario",
+            email: decodedToken.email,
+            rol: "CLIENTE",
+            activo: true,
+            fechaRegistro: new Date(),
+          });
+          await usuario.save();
+          console.log("✅ Usuario creado en BD:", usuario._id);
           req.usuario = usuario;
           return next();
         }
       } catch (firebaseError) {
-        console.log("❌ Token no es de Firebase:", firebaseError.message);
+        console.log("❌ Error verificando token de Firebase:", firebaseError.message);
+        console.log("❌ Código de error:", firebaseError.code);
       }
+    } else {
+      console.log("⚠️ Firebase no está inicializado");
     }
 
     // Si no es token de Firebase, intentar como token del backend
