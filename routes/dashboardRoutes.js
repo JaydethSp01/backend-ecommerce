@@ -35,6 +35,31 @@ router.get("/test-firebase", async (req, res) => {
   }
 });
 
+// Endpoint de prueba para verificar autenticación
+router.get("/test-auth", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader ? authHeader.split(" ")[1] : null;
+    
+    res.json({
+      success: true,
+      message: "Auth test endpoint",
+      timestamp: new Date().toISOString(),
+      auth: {
+        header: authHeader ? "Presente" : "Ausente",
+        token: token ? `${token.substring(0, 20)}...` : "No token",
+        tokenLength: token ? token.length : 0
+      }
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // GET /api/dashboard/stats/:userId - Obtener estadísticas del dashboard
 router.get("/stats/:userId", verificarAuth, async (req, res, next) => {
   try {
