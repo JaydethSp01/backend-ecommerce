@@ -366,6 +366,7 @@ const verificarAuth = async (req, res, next) => {
     console.log("🔍 Token recibido:", token.substring(0, 20) + "...");
     console.log("🔍 Longitud del token:", token.length);
     console.log("🔍 Firebase inicializado:", firebaseInitialized);
+    console.log("🔍 Token completo (primeros 50 chars):", token.substring(0, 50) + "...");
 
     // Intentar verificar como token de Firebase primero
     if (firebaseInitialized) {
